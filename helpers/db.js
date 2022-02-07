@@ -1,28 +1,53 @@
+import {
+  client,
+  q,
+} from './faunaClient.js'
+
 export const getCustomer = async () => {
+  const customerRef = q.Select(
+    ['data', 0],
+    q.Paginate(
+      q.Documents(q.Collection('Customers')),
+      { size: 1 }
+    )
+  )
+
+  const response = await client.query(q.Let(
+    { ref: customerRef },
+    {
+      doc: q.Select('data', q.Get(q.Var('ref'))),
+      id: q.Select('id', q.Var('ref'))
+    }
+  ))
+
   return {
-    breed: 'Corgi',
-    id: 1,
-    name: 'Bark Hamill',
+    ...response.doc.data,
+    id: response.id,
   }
 }
 
 export const getServices = async () => {
-  return [
-    {
-      name: 'The Singularity Scrub',
-      description: 'Get your pup as clean as a newborn star with our Singularity Scrub! Our proprietary Black Hole Deshedding™ process will have them howling happy in no time!',
-      price: 2500,
-      id: 2,
+  const getServicesFunctionRef = q.Function('get_services')
+
+  const response = await client.query(q.Call(getServicesFunctionRef))
+
+  return response.data.map(item => {
+    return {
+      ...item.doc,
+      id: item.id,
     }
-  ]
+  })
 }
 
 export const createOrder = async (customer, services) => {
-  return {
-    discounts: [],
-    id: 3,
-    isComplete: false,
-    services: [2],
-    subtotal: 2500
-  }
+  const customerRef = q.Ref(q.Collection('Customers'), customer.id)
+  const servicesRefs = Object.keys(services).map(serviceID => {
+    return q.Ref(q.Collection('Services'), serviceID)
+  })
+
+  const createOrderFunctionRef = q.Function('create_order_with_discount')
+
+  const response = await client.query(q.Call(createOrderFunctionRef, customerRef, servicesRefs))
+
+  return response
 }
